@@ -150,15 +150,19 @@ const handleSelectFiles = async () => {
 
     if (result.success) {
       if (result.files && result.files.length > 0) {
-        // 添加文件到store
-        fileStore.addFiles(result.files)
+        // 添加文件到store（返回实际添加的文件）
+        const addedFiles = fileStore.addFiles(result.files)
 
         // 初始化拖拽功能
         nextTick(() => {
           initSortable()
         })
 
-        ElMessage.success(`成功添加 ${result.files.length} 个文件`)
+        if (addedFiles.length > 0) {
+          ElMessage.success(`成功添加 ${addedFiles.length} 个文件`)
+        } else {
+          ElMessage.info('所有文件都已存在，未添加新文件')
+        }
       } else {
         ElMessage.info('未选择任何文件')
       }

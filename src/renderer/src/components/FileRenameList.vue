@@ -29,12 +29,35 @@
         </el-table-column>
 
         <el-table-column prop="newName" label="新文件名" min-width="300" show-overflow-tooltip>
+          <template #header>
+            <div class="column-header">
+              <span>新文件名</span>
+              <el-button
+                :icon="isLocked ? Lock : Unlock"
+                size="small"
+                type="text"
+                class="lock-button"
+                :title="isLocked ? '点击解锁编辑' : '点击锁定编辑'"
+                @click="toggleLock"
+              />
+            </div>
+          </template>
           <template #default="{ row }">
             <div class="file-name">
               <el-icon class="file-icon">
                 <VideoPlay />
               </el-icon>
-              <span>{{ row.newName }}</span>
+              <!-- 可编辑的文件名输入框 -->
+              <el-input
+                v-model="row.newName"
+                size="small"
+                class="file-name-input"
+                :class="{ 'locked-input': isLocked }"
+                :disabled="isLocked"
+                placeholder="请输入新文件名"
+                @blur="handleFileNameChange(row.fileId, row.newName)"
+                @keyup.enter="handleFileNameChange(row.fileId, row.newName)"
+              />
             </div>
           </template>
         </el-table-column>
@@ -54,8 +77,11 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoPlay } from '@element-plus/icons-vue'
-import { generateFileNames, validateFormData } from '../utils/renameUtils'
+import { VideoPlay, Lock, Unlock } from '@element-plus/icons-vue'
+import { useFilesStore } from '../stores/FilesStore'
+
+// 获取文件store实例
+const filesStore = useFilesStore()
 
 // 组件属性
 const props = defineProps({
@@ -64,10 +90,10 @@ const props = defineProps({
     type: Array,
     default: () => []
   },
-  // 表单数据
-  formData: {
-    type: Object,
-    default: () => ({})
+  // 重命名数据
+  renameData: {
+    type: Array,
+    default: () => []
   }
 })
 
@@ -77,32 +103,74 @@ const emit = defineEmits(['rename', 'rename-complete'])
 // 响应式数据
 const isRenaming = ref(false)
 const renameResults = ref([])
+// 锁定状态管理
+const isLocked = ref(true)
+
+// 切换锁定状态
+const toggleLock = () => {
+  isLocked.value = !isLocked.value
+  ElMessage.info(isLocked.value ? '已锁定编辑' : '已解锁编辑')
+}
 
 // 计算属性：文件列表
 const fileList = computed(() => {
-  if (!props.formData.workName || !props.formData.resolution) {
+  if (props.renameData.length === 0) {
     return []
   }
 
-  const results = generateFileNames(props.formData, props.files)
-
-  // 合并重命名结果状态
-  return results.map((item, index) => {
-    const existingResult = renameResults.value.find((r) => r.index === index)
+  return props.files.map((file) => {
+    const renameInfo = props.renameData.find((data) => data.fileId === file.id)
     return {
-      ...item,
-      status: existingResult ? existingResult.status : 'pending'
+      originalName: file.name,
+      newName: renameInfo ? renameInfo.newFileName : file.name,
+      fileId: file.id,
+      status: 'pending'
     }
   })
 })
 
 // 计算属性：是否可以重命名
 const canRename = computed(() => {
-  if (props.files.length === 0) return false
+  if (props.files.length === 0 || props.renameData.length === 0) return false
 
-  const validation = validateFormData(props.formData)
-  return validation.isValid
+  // 检查是否有必填字段
+  return props.renameData.some((data) => data.workName && data.resolution)
 })
+
+// 处理文件名修改
+const handleFileNameChange = (fileId, newFileName) => {
+  // 验证文件名是否为空
+  if (!newFileName || newFileName.trim() === '') {
+    ElMessage.warning('文件名不能为空')
+    return
+  }
+
+  // 验证文件名格式（可选：添加更多验证规则）
+  const invalidChars = /[<>:"/\\|?*]/
+  if (invalidChars.test(newFileName)) {
+    ElMessage.warning('文件名包含非法字符，请修改')
+    return
+  }
+
+  try {
+    // 更新store中的重命名数据
+    const renameData = filesStore.getFileRenameData(fileId)
+    if (renameData) {
+      // 直接更新newFileName字段
+      renameData.newFileName = newFileName.trim()
+
+      // 触发store的更新方法（如果需要的话）
+      filesStore.updateFileRenameData(fileId, 'newFileName', newFileName.trim())
+
+      ElMessage.success('文件名已更新')
+    } else {
+      ElMessage.error('未找到对应的文件数据')
+    }
+  } catch (error) {
+    console.error('更新文件名失败:', error)
+    ElMessage.error('更新文件名失败，请重试')
+  }
+}
 
 // 处理重命名
 const handleRename = async () => {
@@ -129,7 +197,7 @@ const handleRename = async () => {
     // 发送重命名事件给父组件
     emit('rename', {
       files: props.files,
-      formData: props.formData,
+      renameData: props.renameData,
       fileList: fileList.value
     })
   } catch (error) {
@@ -230,6 +298,29 @@ defineExpose({
   font-size: 16px;
 }
 
+/* 文件名输入框样式 */
+.file-name-input {
+  flex: 1;
+}
+
+.file-name-input :deep(.el-input__wrapper) {
+  border: 1px solid transparent;
+  background-color: transparent;
+  box-shadow: none;
+  transition: all 0.2s ease;
+}
+
+.file-name-input :deep(.el-input__wrapper:hover) {
+  border-color: #c0c4cc;
+  background-color: #fff;
+}
+
+.file-name-input :deep(.el-input__wrapper.is-focus) {
+  border-color: #409eff;
+  background-color: #fff;
+  box-shadow: 0 0 0 2px rgba(64, 158, 255, 0.2);
+}
+
 /* 表格样式优化 */
 :deep(.el-table) {
   border-radius: 0;
@@ -243,5 +334,45 @@ defineExpose({
   background-color: #f5f7fa;
   color: #606266;
   font-weight: 500;
+}
+
+/* 列表头样式 */
+.column-header {
+  display: flex;
+  width: 100%;
+}
+
+/* 锁定按钮样式 */
+.lock-button {
+  padding: 4px;
+  margin-left: 8px;
+  color: #606266;
+  transition: all 0.2s ease;
+}
+
+.lock-button:hover {
+  color: #409eff;
+  background-color: rgba(64, 158, 255, 0.1);
+}
+
+.lock-button:active {
+  transform: scale(0.95);
+}
+
+/* 锁定状态下的输入框样式 */
+.locked-input :deep(.el-input__wrapper) {
+  background-color: #f5f7fa !important;
+  border-color: #dcdfe6 !important;
+  cursor: not-allowed;
+}
+
+.locked-input :deep(.el-input__inner) {
+  color: #909399 !important;
+  cursor: not-allowed;
+}
+
+.locked-input :deep(.el-input__wrapper:hover) {
+  border-color: #dcdfe6 !important;
+  background-color: #f5f7fa !important;
 }
 </style>

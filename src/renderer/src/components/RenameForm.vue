@@ -88,11 +88,12 @@
 
         <!-- 作品年份 -->
         <el-form-item label="作品年份">
-          <el-input-number
+          <el-date-picker
             v-model="formData.workYear"
-            placeholder="选填"
-            :min="1900"
-            :max="2100"
+            type="year"
+            placeholder="选择年份"
+            format="YYYY"
+            value-format="YYYY"
             style="width: 200px"
           />
         </el-form-item>
@@ -111,18 +112,30 @@
         </el-form-item>
 
         <!-- 集数 -->
-        <el-form-item label="集数" required>
-          <div class="episode-inputs">
-            <span>第</span>
-            <el-input-number v-model="formData.season" :min="1" :max="99" style="width: 80px" />
-            <span>季 第</span>
-            <el-input-number
-              v-model="formData.startEpisode"
-              :min="1"
-              :max="999"
-              style="width: 80px"
-            />
-            <span>集</span>
+        <el-form-item label="集数" :required="!formData.isMovie">
+          <div class="episode-container">
+            <div class="episode-inputs">
+              <span>第</span>
+              <el-input-number
+                v-model="formData.season"
+                :min="1"
+                :max="99"
+                :disabled="formData.isMovie"
+                style="width: 80px"
+              />
+              <span>季 第</span>
+              <el-input-number
+                v-model="formData.startEpisode"
+                :min="1"
+                :max="999"
+                :disabled="formData.isMovie"
+                style="width: 80px"
+              />
+              <span>集</span>
+              <el-checkbox v-if="props.showMovieCheckbox" v-model="formData.isMovie">
+                电影
+              </el-checkbox>
+            </div>
           </div>
         </el-form-item>
 
@@ -170,6 +183,14 @@ import {
   validateFormData
 } from '../utils/renameUtils'
 
+// 组件属性
+const props = defineProps({
+  showMovieCheckbox: {
+    type: Boolean,
+    default: true
+  }
+})
+
 // 表单引用
 const formRef = ref()
 
@@ -192,6 +213,7 @@ const formData = reactive({
   // 集数信息
   season: 1,
   startEpisode: 1,
+  isMovie: false, // 是否是电影
 
   // 格式信息
   videoFormat: '',
@@ -270,12 +292,22 @@ watch(
   }
 )
 
+// 更新表单数据方法（用于自动填入）
+const updateFormData = (data) => {
+  Object.keys(data).forEach((key) => {
+    if (key in formData) {
+      formData[key] = data[key]
+    }
+  })
+}
+
 // 暴露方法给父组件
 defineExpose({
   validateForm,
   getFormData,
   validate,
-  resetForm
+  resetForm,
+  updateFormData
 })
 </script>
 
@@ -314,6 +346,11 @@ defineExpose({
 .selector-item {
   display: flex;
   align-items: center;
+}
+
+.episode-container {
+  display: flex;
+  flex-direction: column;
 }
 
 .episode-inputs {

@@ -56,13 +56,17 @@ export const resolutionOptions = [
   { label: '480p', value: '480p' },
   { label: '720p', value: '720p' },
   { label: '1080p', value: '1080p' },
-  { label: '2K', value: '2k' },
-  { label: '4K', value: '4k' }
+  { label: '1440p', value: '1440p' },
+  { label: '2160p', value: '2160p' }
 ]
 
 // 来源选项
 export const sourceOptions = [
   { label: '无', value: '' },
+  { label: 'BluRay', value: 'BluRay' },
+  { label: 'WEB-DL', value: 'WEB-DL' },
+  { label: 'DVDRip', value: 'DVDRip' },
+  { label: 'CAM', value: 'CAM' },
   { label: 'BDZip', value: 'BDZip' },
   { label: 'WebZip', value: 'WebZip' }
 ]
@@ -81,11 +85,17 @@ export function generateFileName(formData, file, episodeIndex = 0) {
   const encoderGroup = formData.encoderGroup
   const subtitleGroup = formData.subtitleGroup
 
-  if (encoderGroup && subtitleGroup && encoderGroup !== subtitleGroup) {
+  if (
+    encoderGroup &&
+    encoderGroup.trim() !== '' &&
+    subtitleGroup &&
+    subtitleGroup.trim() !== '' &&
+    encoderGroup !== subtitleGroup
+  ) {
     parts.push(`[${encoderGroup}&&${subtitleGroup}]`)
-  } else if (encoderGroup) {
+  } else if (encoderGroup && encoderGroup.trim() !== '') {
     parts.push(`[${encoderGroup}]`)
-  } else if (subtitleGroup) {
+  } else if (subtitleGroup && subtitleGroup.trim() !== '') {
     parts.push(`[${subtitleGroup}]`)
   } else {
     parts.push('[个人收集]')
@@ -111,8 +121,8 @@ export function generateFileName(formData, file, episodeIndex = 0) {
     parts.push(`[${formData.resolution}]`)
   }
 
-  // 集数
-  if (formData.season && formData.startEpisode) {
+  // 集数（如果不是电影才添加）
+  if (!formData.isMovie && formData.season && formData.startEpisode) {
     const episodeNumber = parseInt(formData.startEpisode) + episodeIndex
     parts.push(
       `[S${formData.season.toString().padStart(2, '0')}E${episodeNumber.toString().padStart(2, '0')}]`
@@ -176,12 +186,23 @@ export function validateFormData(formData) {
     errors.push('请选择分辨率')
   }
 
-  if (!formData.season || formData.season === '') {
-    errors.push('请输入季数')
-  }
+  // 验证集数字段（只有非电影时才验证）
+  if (!formData.isMovie) {
+    if (!formData.season || formData.season === '') {
+      errors.push('请输入季数')
+    }
 
-  if (!formData.startEpisode || formData.startEpisode === '') {
-    errors.push('请输入起始集数')
+    if (!formData.startEpisode || formData.startEpisode === '') {
+      errors.push('请输入起始集数')
+    }
+
+    if (formData.season && (isNaN(formData.season) || formData.season < 1)) {
+      errors.push('季数必须是大于0的数字')
+    }
+
+    if (formData.startEpisode && (isNaN(formData.startEpisode) || formData.startEpisode < 1)) {
+      errors.push('起始集数必须是大于0的数字')
+    }
   }
 
   // 验证数字字段
@@ -190,14 +211,6 @@ export function validateFormData(formData) {
     (isNaN(formData.workYear) || formData.workYear < 1900 || formData.workYear > 2100)
   ) {
     errors.push('作品年份必须是1900-2100之间的数字')
-  }
-
-  if (formData.season && (isNaN(formData.season) || formData.season < 1)) {
-    errors.push('季数必须是大于0的数字')
-  }
-
-  if (formData.startEpisode && (isNaN(formData.startEpisode) || formData.startEpisode < 1)) {
-    errors.push('起始集数必须是大于0的数字')
   }
 
   return {

@@ -87,6 +87,7 @@ const extractVideoInfo = (mediaInfoResult, file) => {
     // 视频信息
     video: {
       format: videoTrack.Format || '未知',
+      formatProfile: videoTrack.Format_Profile || '未知',
       codec: videoTrack.CodecID || videoTrack.Format || '未知',
       width: videoTrack.Width || '未知',
       height: videoTrack.Height || '未知',

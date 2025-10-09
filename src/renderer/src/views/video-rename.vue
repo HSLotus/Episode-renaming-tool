@@ -7,6 +7,16 @@
           返回首页
         </el-button>
         <h3>视频文件重命名</h3>
+        <el-button
+          type="primary"
+          size="small"
+          :loading="isAutoFilling"
+          :disabled="selectedFiles.length === 0"
+          @click="handleAutoFill"
+        >
+          <el-icon><VideoCamera /></el-icon>
+          自动填入
+        </el-button>
       </div>
     </div>
 
@@ -14,7 +24,11 @@
     <div class="main-content">
       <!-- 重命名表单 -->
       <div class="form-section">
-        <RenameForm ref="renameFormRef" @update:form-data="handleFormDataUpdate" />
+        <RenameForm
+          ref="renameFormRef"
+          :show-movie-checkbox="selectedFiles.length === 1"
+          @update:form-data="handleFormDataUpdate"
+        />
       </div>
 
       <!-- 文件列表预览 -->
@@ -22,7 +36,7 @@
         <FileRenameList
           ref="fileListRef"
           :files="selectedFiles"
-          :form-data="formData"
+          :rename-data="fileStore.getAllRenameData()"
           @rename="handleRename"
           @rename-complete="handleRenameComplete"
         />
@@ -57,10 +71,11 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft } from '@element-plus/icons-vue'
+import { ArrowLeft, VideoCamera } from '@element-plus/icons-vue'
 import RenameForm from '../components/RenameForm.vue'
 import FileRenameList from '../components/FileRenameList.vue'
 import { useFilesStore } from '../stores/FilesStore'
+import { analyzeVideosForAutoFill } from '../utils/autoFillUtils'
 
 // 路由和状态管理
 const router = useRouter()
@@ -77,6 +92,7 @@ const progressPercentage = ref(0)
 const progressStatus = ref('')
 const progressText = ref('')
 const progressDetails = ref('')
+const isAutoFilling = ref(false) // 自动填入加载状态
 
 // 计算属性：选中的文件
 const selectedFiles = computed(() => {
@@ -86,15 +102,56 @@ const selectedFiles = computed(() => {
 // 表单数据更新处理
 const handleFormDataUpdate = (data) => {
   Object.assign(formData, data)
+  // 更新store中所有文件的重命名数据
+  fileStore.updateAllFilesRenameData(data)
+
+  // 为所有文件重新生成新文件名
+  selectedFiles.value.forEach((file) => {
+    fileStore.generateNewFileName(file.id)
+  })
 }
 
 // 返回首页
 const handleBack = () => {
+  // 清空选中的文件列表
+  fileStore.selectedFileIds = []
   router.push('/')
 }
 
+// 自动填入视频信息处理
+const handleAutoFill = async () => {
+  if (selectedFiles.value.length === 0) {
+    ElMessage.warning('没有选中的文件')
+    return
+  }
+
+  try {
+    isAutoFilling.value = true
+    ElMessage.info('正在分析视频文件，请稍候...')
+
+    // 分析第一个视频文件
+    const result = await analyzeVideosForAutoFill(selectedFiles.value)
+
+    if (result.success) {
+      // 更新表单数据
+      renameFormRef.value?.updateFormData(result.data)
+
+      ElMessage.success(
+        `自动填入成功！分辨率: ${result.data.resolution || '未知'}，视频格式: ${result.data.videoFormat || '未知'}，音频格式: ${result.data.audioFormat || '未知'}`
+      )
+    } else {
+      ElMessage.error(`自动填入失败: ${result.error}`)
+    }
+  } catch (error) {
+    console.error('自动填入过程中出现错误:', error)
+    ElMessage.error(`自动填入失败: ${error.message}`)
+  } finally {
+    isAutoFilling.value = false
+  }
+}
+
 // 重命名处理
-const handleRename = async ({ files, fileList }) => {
+const handleRename = async ({ files, renameData }) => {
   try {
     showProgressDialog.value = true
     progressPercentage.value = 0
@@ -106,7 +163,8 @@ const handleRename = async ({ files, fileList }) => {
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
-      const newName = fileList[i].newName
+      const renameInfo = renameData.find((data) => data.fileId === file.id)
+      const newName = renameInfo ? renameInfo.newFileName : file.name
 
       try {
         // 更新进度
@@ -210,6 +268,14 @@ onMounted(() => {
     setTimeout(() => {
       router.push('/')
     }, 2000)
+  } else {
+    // 初始化新文件名
+    selectedFiles.value.forEach((file) => {
+      fileStore.generateNewFileName(file.id)
+    })
+
+    // 调用自动填入
+    handleAutoFill()
   }
 })
 </script>
@@ -274,6 +340,16 @@ onMounted(() => {
   background-color: #fff;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.form-header {
+  padding: 16px 24px 0 24px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 16px;
+}
+
+.form-header .el-button {
+  margin-bottom: 16px;
 }
 
 .list-section {
